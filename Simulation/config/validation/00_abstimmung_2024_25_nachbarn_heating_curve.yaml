@@ -1,0 +1,12 @@
+# Tuning of heating_curve on the RL validation period (2024-08-01 to 2025-08-01), not on the evaluation year.
+# Shows that the chosen values score better than the neighbouring values and combinations.
+# Start: python run_experiments.py --config config/validation/00_abstimmung_2024_25_nachbarn_heating_curve.yaml --workers auto
+base_config: ../default.yaml
+output_dir: ../../results/validation/00_abstimmung_2024_25_nachbarn/heating_curve
+save_time_series: false
+parameters:
+  control.method: [heating_curve]
+  simulation.start_time: ["2024-08-01 00:00"]
+  simulation.end_time: ["2025-08-01 00:00"]
+  control.heating_curve.offset_K: [6.0, 7.0, 8.0]
+  control.heating_curve.slope_factor: [0.75, 0.80, 0.85]

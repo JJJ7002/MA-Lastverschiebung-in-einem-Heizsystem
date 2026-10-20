@@ -1,0 +1,12 @@
+base_config: ../default.yaml
+output_dir: ../../results/validation/01_zeitschritt
+save_time_series: false
+parameters:
+  control.method:
+  - heating_curve
+  - pause_load_shifting
+  simulation.dt_minutes:
+  - 1
+  - 2
+  - 5
+  - 10

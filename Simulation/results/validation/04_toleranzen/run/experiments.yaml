@@ -1,0 +1,10 @@
+base_config: ../default.yaml
+output_dir: ../../results/validation/04_toleranzen/run
+save_time_series: false
+parameters:
+  control.method:
+  - run_load_shifting
+  control.run_load_shifting.room_tolerance_K:
+  - 0.01
+  - 0.05
+  - 0.1

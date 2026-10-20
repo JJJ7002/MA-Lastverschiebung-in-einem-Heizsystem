@@ -1,0 +1,8 @@
+# Convergence of the time step dt_minutes. Run after the offsets have been tuned.
+# Start: python run_experiments.py --config config/validation/01_zeitschritt.yaml --workers auto
+base_config: ../default.yaml
+output_dir: ../../results/validation/01_zeitschritt
+save_time_series: false
+parameters:
+  control.method: [heating_curve]
+  simulation.dt_minutes: [1, 2, 5, 10]

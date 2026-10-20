@@ -1,0 +1,17 @@
+base_config: ../default.yaml
+output_dir: ../../results/validation/00_abstimmung_2024_25/heating_curve_supply
+save_time_series: false
+parameters:
+  control.method:
+  - heating_curve_supply
+  simulation.start_time:
+  - 2024-08-01 00:00
+  simulation.end_time:
+  - 2025-08-01 00:00
+  control.heating_curve_supply.offset_K:
+  - 5.0
+  - 6.0
+  - 7.0
+  - 8.0
+  - 9.0
+  - 10.0

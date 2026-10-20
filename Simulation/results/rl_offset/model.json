@@ -1,0 +1,52 @@
+{
+  "agent": "offset",
+  "observation_version": 2,
+  "shifts_K": [
+    -4.0,
+    -3.0,
+    -2.0,
+    -1.0,
+    0.0,
+    1.0,
+    2.0,
+    3.0,
+    4.0
+  ],
+  "last_shift": true,
+  "heat_pump_power": true,
+  "seed": 42,
+  "dqn": {
+    "net_arch": [
+      64,
+      64
+    ],
+    "learning_rate": 0.0001,
+    "buffer_size": 100000,
+    "learning_starts": 1000,
+    "batch_size": 64,
+    "gamma": 0.995,
+    "train_freq": 4,
+    "gradient_steps": 1,
+    "target_update_interval": 5000,
+    "exploration_fraction": 0.3,
+    "exploration_initial_eps": 1.0,
+    "exploration_final_eps": 0.05
+  },
+  "n_envs": 1,
+  "validation_windows": 8,
+  "training_timesteps": 400000,
+  "selected_checkpoint_timesteps": 175000,
+  "validation_total_score": 542.694385,
+  "periods": {
+    "train": {
+      "start": "2020-08-01 00:00:00",
+      "end": "2024-08-01 00:00:00",
+      "samples": 786960
+    },
+    "validation": {
+      "start": "2024-08-01 00:00:00",
+      "end": "2025-08-01 00:00:00",
+      "samples": 40320
+    }
+  }
+}

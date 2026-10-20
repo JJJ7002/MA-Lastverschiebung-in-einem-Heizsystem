@@ -1,0 +1,19 @@
+# STIEBEL ELTRON SBP E standard storage models (SOL/cool variants excluded).
+# Directly sourced product values only: nominal water volume and standby
+# energy consumption at 65 C. tank_diameter_m is the vessel diameter excluding
+# insulation, as supplied from the dimensional drawings.
+SBP 200 E:
+  volume_L: 207
+  standby_loss_kWh_per_24h_at_65C: 1.10
+  tank_diameter_m: 0.450
+  source: "STIEBEL ELTRON product data; vessel diameter supplied from dimensional drawing"
+SBP 400 E:
+  volume_L: 415
+  standby_loss_kWh_per_24h_at_65C: 1.60
+  tank_diameter_m: 0.600
+  source: "STIEBEL ELTRON product data; vessel diameter supplied from dimensional drawing"
+SBP 700 E:
+  volume_L: 720
+  standby_loss_kWh_per_24h_at_65C: 2.20
+  tank_diameter_m: 0.749
+  source: "STIEBEL ELTRON product data; vessel diameter supplied from dimensional drawing"

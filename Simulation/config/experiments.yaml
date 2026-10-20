@@ -1,0 +1,10 @@
+# Paths are relative to this file.
+base_config: default.yaml
+output_dir: ../results/experiments
+save_time_series: true
+save_heat_profile: true # Mean building heat supply, heat pump output and building heat loss
+save_temperature_profile: true # Mean room, target and comfort temperature by time of day
+
+# All combinations are run, plus the unchanged baseline as run_000.
+parameters:
+  control.method: [heating_curve_supply, pause_load_shifting, run_load_shifting, reinforcement_learning, reinforcement_learning_offset]

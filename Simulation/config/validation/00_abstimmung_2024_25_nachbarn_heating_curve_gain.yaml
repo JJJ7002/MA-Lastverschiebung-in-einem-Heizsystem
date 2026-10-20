@@ -1,0 +1,12 @@
+# Tuning of heating_curve on the RL validation period (2024-08-01 to 2025-08-01), not on the evaluation year.
+# Shows that the chosen gain scores better than the neighbouring values.
+# Start: python run_experiments.py --config config/validation/00_abstimmung_2024_25_nachbarn_heating_curve_gain.yaml --workers auto
+base_config: ../default.yaml
+output_dir: ../../results/validation/00_abstimmung_2024_25_nachbarn/heating_curve_gain
+save_time_series: false
+parameters:
+  control.method: [heating_curve]
+  simulation.start_time: ["2024-08-01 00:00"]
+  simulation.end_time: ["2025-08-01 00:00"]
+  control.heating_curve.temperature_gain_W_per_K: [2800.0, 5200.0] # The chosen 4000 (default.yaml) runs as baseline run_000
+

@@ -1,0 +1,173 @@
+<!doctype html>
+<html lang="de">
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Simulationsbrowser</title>
+<style>
+*{box-sizing:border-box}body{margin:0;background:#f3f6fa;color:#203047;font:15px system-ui}header{background:#172b43;color:white;padding:22px 30px}h1{font-size:24px;margin:0 0 5px}header p{margin:0;color:#b9ccdf}main{display:grid;grid-template-columns:310px 1fr;gap:20px;padding:20px}aside,.card{background:white;border:1px solid #dce4ee;border-radius:10px;padding:18px}aside{align-self:start}h2{font-size:17px;margin:0 0 12px}label{display:block;margin:7px 0}input,select,button{font:inherit}input[type=search],input[type=datetime-local],input[type=number],select{width:100%;padding:8px;border:1px solid #cbd5e1;border-radius:5px}input[type=checkbox]{margin-right:8px;accent-color:#2563eb}button{padding:7px 12px;background:#eaf0f8;border:1px solid #cbd5e1;border-radius:5px;cursor:pointer}button:hover{background:#dce8f8}.group{margin-bottom:22px}.list{max-height:290px;overflow:auto}.run{font-size:13px;overflow-wrap:anywhere}.study{font-size:12px;font-weight:700;color:#536c85;margin-top:15px}.study-group{display:flex;align-items:center;gap:4px;margin-top:15px}.study-group input{flex:0 0 auto}.study-group .study{margin:0}.toolbar{display:flex;gap:8px;margin:8px 0}.card{margin-bottom:16px;position:relative}.chart{width:100%;height:300px;display:block;touch-action:none}.legend{display:flex;gap:12px;flex-wrap:wrap;font-size:12px}.dot{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:5px}.muted{color:#64748b;font-size:13px}#status{margin:0 0 14px}.tip{white-space:pre-wrap;font-size:12px;min-height:18px;color:#435b73}#empty{padding:70px 20px;text-align:center}details{margin-top:12px}summary{cursor:pointer}.dates{display:grid;grid-template-columns:1fr 1fr;gap:8px}@media(max-width:850px){main{grid-template-columns:1fr}.dates{grid-template-columns:1fr}}
+</style>
+<header><h1>Simulationsbrowser</h1><p>Studien und Runs vergleichen · Zeitreihen und Tagesprofile</p></header>
+<main><aside>
+<div class="group"><h2>1 · Runs</h2><input id="search" type="search" placeholder="Studie oder Run suchen" aria-label="Runs suchen"><div class="toolbar"><button id="all">Alle</button><button id="none">Keine</button><button id="refresh">Aktualisieren</button></div><div id="runs" class="list"></div></div>
+<div class="group"><h2>2 · Variablen</h2><div id="variables" class="list"></div></div>
+<div class="group"><h2>3 · Darstellung</h2><label for="mode">Zeitachse</label><select id="mode"><option value="date">Datum / Simulationszeit</option><option value="elapsed">Zeit seit Simulationsstart</option><option value="daily">Durchschnittlicher Tagesverlauf</option></select>
+<label for="layout">Diagramme</label><select id="layout"><option value="overlay">Variablen gemeinsam überlagern</option><option value="separate">Ein Diagramm pro Variable</option></select><p class="muted">Gemeinsam: Farbe = Run, Linienmuster = Variable. Gleiche Einheiten teilen eine Y-Achse.</p>
+<label for="bin">Tagesprofil: Raster in Minuten</label><input id="bin" type="number" min="1" max="1440" value="60">
+<details open><summary>Zeitraum der Quelldaten</summary><label for="start">Von (Simulationszeit)</label><input id="start" type="datetime-local" step="1"><label for="end">Bis (einschließlich)</label><input id="end" type="datetime-local" step="1"><button id="reset" style="margin-top:10px">Zeitraum zurücksetzen</button></details></div>
+<p class="muted">Mausrad vertikal: zoomen · Mausrad horizontal / Umschalt + Mausrad: verschieben · Diagramm anklicken: ←/→ verschieben, ↑/↓ zoomen, Pos1 gesamter Verlauf · Ziehen: Zeitachse verschieben · Doppelklick: Zoom zurücksetzen. Fehlende Werte bleiben als Lücken sichtbar.</p>
+<div class="group"><h2>4 · Effizienzanalyse</h2><label for="attrBase">Basis-Run</label><select id="attrBase"></select><label for="attrCompare">Vergleichs-Run</label><select id="attrCompare"></select><button id="attrRun" type="button">Strom-Differenz aufteilen</button><p class="muted">Nutzt die ausgewählten Runs und den Zeitraum oben (falls gesetzt).</p></div>
+</aside><section><div id="attribution"></div><p id="status" role="status">Runs werden geladen …</p><div id="plots"></div></section></main>
+<script>
+const $=id=>document.getElementById(id), selected=new Set(), variables=new Set(['room_temperature_C']), cache=new Map();
+function runColors(active){
+    // Equal spacing maximizes the smallest circular hue distance (360 / count).
+    return new Map(active.map((run,index)=>[run.id,`hsl(${(220+index*360/active.length)%360}, 78%, 36%)`]));
+}
+let runs=[], revision=0, view=null, chartViews=[], paintFrame=null;
+const names={outside_temperature_C:'Außentemperatur',room_temperature_C:'Raumtemperatur',storage_temperature_C:'Speichertemperatur',target_room_temperature_C:'Solltemperatur',comfort_threshold_C:'Komfortgrenze',heat_pump_on:'Wärmepumpe ein',heat_pump_power_fraction:'WP-Leistungsanteil',thermal_power_W:'WP-Wärmeleistung',heating_power_to_building_W:'Wärmeabgabe ans Gebäude',building_heat_loss_W:'Gebäudewärmeverlust',electric_power_W:'Elektrische Leistung',cop:'COP',potential_cop:'Potenzieller COP',reference_cop:'Referenz-COP',cop_advantage:'COP-Vorteil',fallback_active:'Fallback aktiv',fallback_override:'Fallback Override'};
+const unit=key=>key.endsWith('_C')?'°C':key.endsWith('_W')?'W':key==='heat_pump_power_fraction'?'Anteil (0–1)':key.includes('fallback')||key==='heat_pump_on'?'Zustand (0/1)':'';
+function element(tag,text,cls){const e=document.createElement(tag);if(text!==undefined)e.textContent=text;if(cls)e.className=cls;return e}
+async function api(url){const response=await fetch(url);if(!response.ok)throw Error('Daten konnten nicht geladen werden ('+response.status+').');return response.json()}
+function renderRuns(){
+    const container=$('runs'),query=$('search').value.toLowerCase(),visible=runs.filter(r=>(r.study+'/'+r.name).toLowerCase().includes(query));
+    container.replaceChildren();
+    const groups=new Map();
+    for(const run of visible){if(!groups.has(run.study))groups.set(run.study,[]);groups.get(run.study).push(run)}
+    for(const [study,groupRuns] of groups){
+        const heading=element('label',undefined,'study-group'),groupCheck=document.createElement('input');
+        groupCheck.type='checkbox';groupCheck.checked=groupRuns.every(run=>selected.has(run.id));
+        groupCheck.indeterminate=!groupCheck.checked&&groupRuns.some(run=>selected.has(run.id));
+        groupCheck.setAttribute('aria-label','Alle Runs aus '+(study==='.'?'Einzelruns':study)+' auswählen');
+        groupCheck.onchange=()=>{for(const run of groupRuns)groupCheck.checked?selected.add(run.id):selected.delete(run.id);view=null;renderRuns();renderVariables();draw()};
+        heading.append(groupCheck,element('span',study==='.'?'Einzelruns':study,'study'));container.append(heading);
+        for(const run of groupRuns){
+            const label=element('label',undefined,'run'),check=document.createElement('input');check.type='checkbox';check.checked=selected.has(run.id);
+            check.onchange=()=>{check.checked?selected.add(run.id):selected.delete(run.id);view=null;renderRuns();renderVariables();draw()};
+            label.append(check,document.createTextNode(run.name));label.title=run.id;container.append(label);
+        }
+    }
+}
+function renderVariables(){renderAttributionChoices();const keys=[...new Set(runs.filter(r=>selected.has(r.id)).flatMap(r=>r.columns))];$('variables').replaceChildren();for(const key of keys){const label=element('label'),check=document.createElement('input');check.type='checkbox';check.checked=variables.has(key);check.onchange=()=>{check.checked?variables.add(key):variables.delete(key);draw()};label.append(check,document.createTextNode((names[key]||key)+(unit(key)?' ['+unit(key)+']':'')));$('variables').append(label)}if(!keys.length)$('variables').append(element('p','Zuerst Runs auswählen.','muted'))}
+async function refresh(){try{cache.clear();runs=await api('/api/runs');for(const id of selected)if(!runs.some(r=>r.id===id))selected.delete(id);if(!selected.size&&runs.length)selected.add(runs[0].id);renderRuns();renderVariables();await draw()}catch(error){$('status').textContent=error.message}}
+function filtered(run,key){const source=cache.get(run.id), values=source.data[key];if(!values)return [];const lower=$('start').value?Date.parse($('start').value+'Z'):-Infinity, upper=$('end').value?Date.parse($('end').value+'Z'):Infinity,mode=$('mode').value;let points=[];for(let i=0;i<source.times.length;i++){const t=source.times[i];if(t<lower||t>upper)continue;points.push([mode==='elapsed'?(t-source.times[0])/3600000:t,values[i]])}if(mode==='daily'){const width=Number($('bin').value);if(!Number.isFinite(width)||width<1||width>1440)throw Error('Das Tagesraster muss zwischen 1 und 1440 Minuten liegen.');const bins=new Map();for(const [t,y] of points){if(y===null)continue;const minute=((t%86400000)+86400000)%86400000/60000, index=Math.floor(minute/width);const b=bins.get(index)||[0,0];b[0]+=y;b[1]++;bins.set(index,b)}points=Array.from({length:Math.ceil(1440/width)},(_,i)=>[i*width/60,bins.has(i)?bins.get(i)[0]/bins.get(i)[1]:null])}return points}
+function niceStep(raw){
+    if(!Number.isFinite(raw)||raw<=0)return 1;
+    const power=10**Math.floor(Math.log10(raw)), fraction=raw/power;
+    const nice=fraction<=1?1:fraction<=2?2:fraction<=2.5?2.5:fraction<=5?5:10;
+    return nice*power;
+}
+function niceAxis(min,max,targetIntervals=5){
+    if(!Number.isFinite(min)||!Number.isFinite(max))return {min:0,max:1,step:1,ticks:[0,1]};
+    if(min===max){const pad=Math.max(Math.abs(min)*.05,1);min-=pad;max+=pad}
+    const step=niceStep((max-min)/targetIntervals);
+    const axisMin=Math.floor(min/step+1e-10)*step, axisMax=Math.ceil(max/step-1e-10)*step;
+    const ticks=[];
+    for(let i=0,value=axisMin;i<=targetIntervals+2&&value<=axisMax+step*1e-8;i++,value=axisMin+i*step)ticks.push(Math.abs(value)<step*1e-10?0:value);
+    return {min:axisMin,max:axisMax,step,ticks};
+}
+function formatTick(value,step){
+    let decimals=0;while(decimals<8&&Math.abs(step*10**decimals-Math.round(step*10**decimals))>1e-8)decimals++;
+    return Number(value.toFixed(decimals)).toLocaleString('de-CH',{maximumFractionDigits:decimals});
+}
+const DAY_MS=86400000, HOUR_MS=3600000, MINUTE_MS=60000;
+function niceTimeStep(raw){
+    const steps=[MINUTE_MS,2*MINUTE_MS,5*MINUTE_MS,10*MINUTE_MS,15*MINUTE_MS,30*MINUTE_MS,HOUR_MS,2*HOUR_MS,3*HOUR_MS,4*HOUR_MS,6*HOUR_MS,8*HOUR_MS,12*HOUR_MS,DAY_MS,2*DAY_MS,3*DAY_MS,5*DAY_MS,7*DAY_MS,14*DAY_MS];
+    return steps.find(step=>step>=raw)||niceStep(raw/DAY_MS)*DAY_MS;
+}
+function timeTicks(min,max,mode){
+    if(mode==='daily')return niceAxis(min,max,5).ticks;
+    if(mode==='elapsed')return niceAxis(min,max,5).ticks;
+    const step=niceTimeStep((max-min)/5), first=Math.ceil(min/step-1e-10)*step, ticks=[];
+    for(let i=0,t=first;i<8&&t<=max+step*1e-8;i++,t=first+i*step)ticks.push(t);
+    return ticks;
+}
+function timeLabel(x,step){
+    const mode=$('mode').value;
+    if(mode==='date'){
+        const date=new Date(x),day=date.toISOString().slice(0,10),hh=String(date.getUTCHours()).padStart(2,'0'),mm=String(date.getUTCMinutes()).padStart(2,'0');
+        return hh==='00'&&mm==='00'?day.slice(8,10)+'.'+day.slice(5,7)+'.'+day.slice(0,4):hh+':'+mm;
+    }
+    if(mode==='daily'){const total=Math.round(x*60),hh=String(Math.floor(total/60)).padStart(2,'0'),mm=String(total%60).padStart(2,'0');return hh+':'+mm}
+    return formatTick(x,step||niceStep((Math.abs(x)||1)/10))+' h';
+}
+function limitViewport(requested, minimum, maximum, minimumSpan){
+    const fullSpan=maximum-minimum;
+    const span=Math.min(fullSpan,Math.max(Math.min(minimumSpan,fullSpan),requested[1]-requested[0]));
+    const start=Math.max(minimum,Math.min(maximum-span,requested[0]));
+    return [start,start+span];
+}
+function wheelViewport(bounds, minimum, maximum, minimumSpan, dx, dy, fraction, shiftKey=false){
+    const width=bounds[1]-bounds[0];
+    if(Math.abs(dx)>Math.abs(dy)||shiftKey){
+        const shift=(dx||dy)/600*width;
+        return limitViewport([bounds[0]+shift,bounds[1]+shift],minimum,maximum,minimumSpan);
+    }
+    if(!dy)return [...bounds];
+    const span=Math.min(maximum-minimum,Math.max(Math.min(minimumSpan,maximum-minimum),width*Math.exp(Math.max(-100,Math.min(100,dy))*.002)));
+    const anchor=bounds[0]+fraction*width;
+    return limitViewport([anchor-fraction*span,anchor+(1-fraction)*span],minimum,maximum,minimumSpan);
+}
+function updateViewport(requested){
+    view=[...requested];
+    let changed=false;
+    for(const chart of chartViews){const limited=limitViewport(requested,chart.minimum,chart.maximum,chart.minimumSpan);if(chart.bounds[0]!==limited[0]||chart.bounds[1]!==limited[1]){chart.bounds[0]=limited[0];chart.bounds[1]=limited[1];changed=true}}
+    if(changed&&paintFrame===null)paintFrame=requestAnimationFrame(()=>{paintFrame=null;for(const chart of chartViews)chart.paint()});
+}
+async function draw(){const ticket=++revision,active=runs.filter(r=>selected.has(r.id));$('status').textContent='Daten werden geladen …';try{await Promise.all(active.map(async r=>{if(!cache.has(r.id))cache.set(r.id,await api('/api/run?id='+encodeURIComponent(r.id)))}));if(ticket!==revision)return;const colors=runColors(active);const keys=[...variables].filter(key=>active.some(r=>r.columns.includes(key)));if(paintFrame!==null){cancelAnimationFrame(paintFrame);paintFrame=null}chartViews=[];$('plots').replaceChildren();let count=0;if($('layout').value==='overlay'){const patterns=[[],[8,4],[2,3],[10,3,2,3],[12,5],[4,4]];const series=keys.flatMap((key,k)=>active.map((r,i)=>({run:r,key,points:filtered(r,key),color:colors.get(r.id),dash:patterns[k%patterns.length]}))).filter(s=>s.points.length);if(series.length){chart('overlay',series);count=1}}else for(const key of keys){const series=active.map(r=>({run:r,key,points:filtered(r,key),color:colors.get(r.id),dash:[]})).filter(s=>s.points.length);if(!series.length)continue;chart(key,series);count++}if(!count)$('plots').append(element('div','Runs und Variablen auswählen. Für den gewählten Zeitraum sind möglicherweise keine Daten vorhanden.','card'));$('status').textContent=active.length+' von '+runs.length+' Runs ausgewählt · '+count+' Diagramme · Tagesprofile mitteln die vorhandenen Simulationsschritte.'}catch(error){if(ticket===revision)$('status').textContent=error.message}}
+function chart(key,series){const card=element('div',undefined,'card'),title=element('h2',(key==='overlay'?'Überlagerte Variablen':(names[key]||key)+(unit(key)?' ['+unit(key)+']':''))),canvas=element('canvas',undefined,'chart'),legend=element('div',undefined,'legend'),tip=element('div','Mit der Maus über die Kurven fahren.','tip');card.append(title,canvas,legend,tip);$('plots').append(card);for(const s of series){const entry=element('span'),dot=element('span',undefined,'dot');dot.style.background=s.color;const sample=document.createElementNS('http://www.w3.org/2000/svg','svg');sample.setAttribute('width','32');sample.setAttribute('height','12');sample.style.verticalAlign='middle';sample.style.marginRight='5px';const line=document.createElementNS('http://www.w3.org/2000/svg','line');for(const [attr,value] of Object.entries({x1:0,x2:32,y1:6,y2:6,stroke:s.color,'stroke-width':2,'stroke-dasharray':s.dash.join(' ')}))line.setAttribute(attr,value);sample.append(line);entry.append(sample,document.createTextNode((key==='overlay'?(names[s.key]||s.key)+' ['+(unit(s.key)||'dimensionslos')+'] · ':'')+s.run.study+'/'+s.run.name));legend.append(entry)}const exportButton=element('button','PNG speichern');exportButton.onclick=()=>{const a=document.createElement('a');a.download=key+'.png';a.href=canvas.toDataURL();a.click()};card.append(exportButton);
+let xmin=Infinity,xmax=-Infinity;for(const s of series)for(const p of s.points){xmin=Math.min(xmin,p[0]);xmax=Math.max(xmax,p[0])}if(xmin===xmax)xmax=xmin+1;if($('mode').value==='daily'){xmin=0;xmax=24}const axes=[...new Set(series.map(s=>unit(s.key)||'dimensionslos'))];const minimumSpan=$('mode').value==='date'?3600000:1;const bounds=limitViewport(view||[xmin,xmax],xmin,xmax,minimumSpan), left=82,right=axes.length>1?80*(axes.length-1):20,top=35,bottom=45;let W,H;canvas.style.minWidth=(left+right+240)+'px';const frame=element('div');frame.style.overflowX='auto';canvas.replaceWith(frame);frame.append(canvas);
+function paint(){
+W=canvas.clientWidth;H=canvas.clientHeight;const ratio=devicePixelRatio||1;canvas.width=W*ratio;canvas.height=H*ratio;const ctx=canvas.getContext('2d');ctx.scale(ratio,ratio);ctx.fillStyle='white';ctx.fillRect(0,0,W,H);
+const ranges=new Map(axes.map(axis=>[axis,[Infinity,-Infinity]]));
+for(const s of series){const range=ranges.get(unit(s.key)||'dimensionslos');for(const [x,y] of s.points)if(y!==null&&x>=bounds[0]&&x<=bounds[1]){range[0]=Math.min(range[0],y);range[1]=Math.max(range[1],y)}}
+for(const range of ranges.values()){const nice=niceAxis(range[0],range[1]);range[0]=nice.min;range[1]=nice.max}
+const X=x=>left+(x-bounds[0])/(bounds[1]-bounds[0])*(W-left-right),Y=(y,s)=>{const [min,max]=ranges.get(unit(s.key)||'dimensionslos');return H-bottom-(y-min)/(max-min)*(H-top-bottom)};
+ctx.font='11px system-ui';
+for(let axisIndex=0;axisIndex<axes.length;axisIndex++){const axis=axes[axisIndex], range=ranges.get(axis),scale=niceAxis(range[0],range[1]),axisX=axisIndex===0?left:W-right+(axisIndex-1)*80,axisColor=axes.length===1?'#53677d':series.find(s=>(unit(s.key)||'dimensionslos')===axis).color;ctx.fillStyle=axisColor;ctx.textAlign=axisIndex===0?'right':'left';ctx.fillText(axis,axisX+(axisIndex===0?-8:8),18);ctx.strokeStyle=axisColor;ctx.beginPath();ctx.moveTo(axisX,top);ctx.lineTo(axisX,H-bottom);ctx.stroke();for(const value of scale.ticks){const y=H-bottom-(value-scale.min)/(scale.max-scale.min)*(H-top-bottom);if(axisIndex===0){ctx.strokeStyle='#e1e8ef';ctx.beginPath();ctx.moveTo(left,y);ctx.lineTo(W-right,y);ctx.stroke()}ctx.fillText(formatTick(value,scale.step),axisX+(axisIndex===0?-8:8),y+4)}}
+ctx.fillStyle='#53677d';const mode=$('mode').value,timeScale=mode==='elapsed'?niceAxis(bounds[0],bounds[1]):null;for(const value of timeTicks(bounds[0],bounds[1],mode)){if(mode==='elapsed'&&(value<bounds[0]-1e-10||value>bounds[1]+1e-10))continue;const x=left+(value-bounds[0])/(bounds[1]-bounds[0])*(W-left-right);ctx.textAlign=x<left+45?'left':x>W-right-45?'right':'center';ctx.fillText(timeLabel(value,timeScale?.step),x,H-16)}
+ctx.save();ctx.beginPath();ctx.rect(left,top,W-left-right,H-top-bottom);ctx.clip();for(const s of series){ctx.strokeStyle=s.color;ctx.lineWidth=1.7;ctx.setLineDash(s.dash);ctx.beginPath();let pen=false;for(const [x,y] of s.points){if(y===null){pen=false;continue}if(pen)ctx.lineTo(X(x),Y(y,s));else ctx.moveTo(X(x),Y(y,s));pen=true}ctx.stroke()}ctx.restore()
+}
+chartViews.push({bounds,minimum:xmin,maximum:xmax,minimumSpan,paint});canvas.tabIndex=0;canvas.setAttribute('aria-label','Zeitdiagramm: Pfeile links und rechts verschieben, Pfeile oben und unten zoomen');paint();let dragging=null;canvas.onpointerdown=e=>{canvas.focus({preventScroll:true});dragging={x:e.clientX,bounds:[...bounds]};canvas.setPointerCapture(e.pointerId)};canvas.onpointerup=()=>{if(dragging){dragging=null;view=[...bounds]}};canvas.onpointercancel=()=>{dragging=null};canvas.onpointermove=e=>{if(dragging){const shift=(e.clientX-dragging.x)/(W-left-right)*(dragging.bounds[1]-dragging.bounds[0]);const limited=limitViewport([dragging.bounds[0]-shift,dragging.bounds[1]-shift],xmin,xmax,minimumSpan);updateViewport(limited);return}const x=bounds[0]+(e.offsetX-left)/(W-left-right)*(bounds[1]-bounds[0]);const texts=[];for(const s of series){let lo=0,hi=s.points.length-1;while(lo<hi){const mid=Math.floor((lo+hi)/2);if(s.points[mid][0]<x)lo=mid+1;else hi=mid}const p=lo>0&&Math.abs(s.points[lo-1][0]-x)<Math.abs(s.points[lo][0]-x)?s.points[lo-1]:s.points[lo];if(p)texts.push((names[s.key]||s.key)+' · '+s.run.study+'/'+s.run.name+': '+(p[1]===null?'keine Daten':p[1].toFixed(3))+' '+unit(s.key)+' · '+timeLabel(p[0]))}tip.textContent=texts.join('\n')};canvas.addEventListener('wheel',e=>{e.preventDefault();const scale=e.deltaMode===1?16:e.deltaMode===2?W:1;const fraction=Math.max(0,Math.min(1,(e.offsetX-left)/(W-left-right)));updateViewport(wheelViewport(bounds,xmin,xmax,minimumSpan,e.deltaX*scale,e.deltaY*scale,fraction,e.shiftKey))},{passive:false});
+canvas.onkeydown=e=>{const width=bounds[1]-bounds[0];let requested;if(e.key==='ArrowLeft'||e.key==='ArrowRight'){const shift=(e.key==='ArrowLeft'?-1:1)*width*.1;requested=limitViewport([bounds[0]+shift,bounds[1]+shift],xmin,xmax,minimumSpan)}else if(['ArrowUp','ArrowDown','+','-','='].includes(e.key)){requested=wheelViewport(bounds,xmin,xmax,minimumSpan,0,['ArrowUp','+','='].includes(e.key)?-100:100,.5)}else if(e.key==='Home'){requested=[xmin,xmax]}else return;e.preventDefault();updateViewport(requested)};
+canvas.ondblclick=()=>{updateViewport([xmin,xmax])}}
+
+$('search').oninput=renderRuns;$('all').onclick=()=>{for(const r of runs)if((r.study+'/'+r.name).toLowerCase().includes($('search').value.toLowerCase()))selected.add(r.id);view=null;renderRuns();renderVariables();draw()};$('none').onclick=()=>{selected.clear();view=null;renderRuns();renderVariables();draw()};$('refresh').onclick=refresh;for(const id of ['mode','layout','bin','start','end'])$(id).onchange=()=>{view=null;draw()};$('reset').onclick=()=>{$('start').value='';$('end').value='';view=null;draw()};let resizeTimer;window.onresize=()=>{clearTimeout(resizeTimer);resizeTimer=setTimeout(draw,150)};refresh();
+
+function renderAttributionChoices(){
+    const active=runs.filter(r=>selected.has(r.id));
+    for(const [id,index] of [['attrBase',0],['attrCompare',1]]){
+        const select=$(id),previous=select.value;select.replaceChildren();
+        for(const run of active){const o=element('option',run.study+'/'+run.name);o.value=run.id;select.append(o)}
+        select.value=active.some(r=>r.id===previous)?previous:(active[Math.min(index,active.length-1)]||{}).id||'';
+    }
+    if($('attrBase').value===$('attrCompare').value&&active.length>1){const other=active.find(r=>r.id!==$('attrBase').value);$('attrCompare').value=other.id}
+}
+function showAttribution(){$('attribution').scrollIntoView({behavior:'smooth',block:'start'})}
+const fmt=(x,d=1,sign=false)=>x.toLocaleString('de-CH',{minimumFractionDigits:d,maximumFractionDigits:d,signDisplay:sign?'exceptZero':'auto'});
+async function runAttribution(){
+    const box=$('attribution'),base=$('attrBase').value,compare=$('attrCompare').value;
+    box.replaceChildren();
+    if(!base||!compare||base===compare){box.append(element('p','Bitte zwei verschiedene Runs auswählen (oben bei «1 · Runs» anhaken).','muted'));showAttribution();return}
+    const params=new URLSearchParams({base,compare});
+    if($('start').value)params.set('from',$('start').value);if($('end').value)params.set('to',$('end').value);
+    const busy=element('div',undefined,'card'),busyText=element('h2','Effizienzanalyse läuft … 0 s');busy.append(busyText,element('p','Die Zeitreihen beider Runs werden gelesen und pro Tag aufgeteilt; bei Jahresläufen dauert das einige Sekunden.','muted'));box.replaceChildren(busy);showAttribution();
+    const started=Date.now(),timer=setInterval(()=>{busyText.textContent='Effizienzanalyse läuft … '+Math.round((Date.now()-started)/1000)+' s'},500);$('attrRun').disabled=true;
+    try{
+        const r=await api('/api/attribution?'+params),card=element('div',undefined,'card'),diff=r.difference_cost,cur=r.currency;
+        const names=id=>runs.find(x=>x.id===id)?.name||id;
+        card.append(element('h2','Effizienzanalyse: '+names(compare)+' gegenüber '+names(base)));
+        card.append(element('p','Stromkosten '+fmt(r.cost[0],2)+' → '+fmt(r.cost[1],2)+' '+cur+' ('+fmt(diff,2,true)+' '+cur+', '+fmt(100*diff/r.cost[0],1,true)+' %) · Strom '+fmt(r.electricity_kWh[0],0)+' → '+fmt(r.electricity_kWh[1],0)+' kWh · Ø Preis '+fmt(r.mean_price_per_kWh[0],3)+' → '+fmt(r.mean_price_per_kWh[1],3)+' '+cur+'/kWh · Wärme '+fmt(r.heat_kWh[0],0)+' → '+fmt(r.heat_kWh[1],0)+' kWh · COP '+fmt(r.cop[0],2)+' → '+fmt(r.cop[1],2)+' · Starts '+r.starts[0]+' → '+r.starts[1]+' · WP-Vorlauf '+fmt(r.supply_temperature_C[0])+' → '+fmt(r.supply_temperature_C[1])+' °C'));
+        const scale=Math.max(...r.terms.map(t=>Math.abs(t.value)),1e-9),table=element('table');
+        for(const t of r.terms){
+            const row=element('tr'),bar=element('div'),side=t.value<0?'right':'left';
+            bar.style.cssText='height:14px;border-radius:3px;background:'+(t.value<0?'#2a6fb0':'#d4761c')+';width:'+(Math.abs(t.value)/scale*50)+'%;margin-'+(t.value<0?'left:auto;margin-right:50%':'left:50%')+';';
+            const cell=element('td');cell.style.cssText='width:45%';cell.append(bar);
+            row.append(element('td',t.label),element('td',fmt(t.value,2,true)+' '+cur),element('td',diff?fmt(100*t.value/diff,0)+' %':''),cell);
+            for(const c of row.children)c.style.padding='3px 8px';table.append(row);
+        }
+        card.append(table,element('p','Stromkosten gemäss Bewertung (ohne Start- und Komfortkosten). Blau = spart Kosten, orange = höhere Kosten. Modellbasierte Aufteilung (pro Tag, Shapley über Aussentemperatur, WP-Vorlauftemperatur und Leistungsstufen); nicht eindeutig. In den untersuchten Läufen bleibt der Strompreis konstant. Wechselwirkung/Rest enthält unter anderem Verschiebungen innerhalb des Tages.','muted'));
+        clearInterval(timer);$('attrRun').disabled=false;box.replaceChildren(card);showAttribution();
+    }catch(error){clearInterval(timer);$('attrRun').disabled=false;console.error(error);const bad=element('div',undefined,'card');bad.append(element('h2','Effizienzanalyse fehlgeschlagen'),element('p',error.message));box.replaceChildren(bad);showAttribution()}
+}
+$('attrRun').onclick=runAttribution;
+</script>
+</html>

@@ -1,0 +1,21 @@
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+weather_cache/
+# Ergebnisse: nur die Läufe der Arbeit und die zwei RL-Modelle werden veröffentlicht;
+# neue Läufe (single_run, experiments, training_*, study_*) bleiben lokal
+results/*
+!results/hauptvergleich/
+!results/validation/
+!results/rl/
+!results/rl_offset/
+results/rl/training_*/
+results/rl_offset/training_*/
+results/validation/**/study_*/
+results_archiv/
+tmp/
+
+# lokale Sicherungskopien
+backup_*/
+*.bak

@@ -1,0 +1,12 @@
+base_config: default.yaml
+output_dir: ../results/experiments
+save_time_series: true
+save_heat_profile: true
+save_temperature_profile: true
+parameters:
+  control.method:
+  - heating_curve_supply
+  - pause_load_shifting
+  - run_load_shifting
+  - reinforcement_learning
+  - reinforcement_learning_offset

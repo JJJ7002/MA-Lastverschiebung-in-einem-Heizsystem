@@ -1,0 +1,9 @@
+# Sensitivity of pause_load_shifting to the recovery tolerance of room air and building mass.
+# Evaluated: score and trials_* (accepted, no recovery within the 12 h horizon, ...).
+# Start: python run_experiments.py --config config/validation/04_toleranzen_pause.yaml --workers auto
+base_config: ../default.yaml
+output_dir: ../../results/validation/04_toleranzen/pause
+save_time_series: false
+parameters:
+  control.method: [pause_load_shifting]
+  control.pause_load_shifting.room_tolerance_K: [0.01, 0.05, 0.1]

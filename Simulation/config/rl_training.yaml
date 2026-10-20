@@ -1,0 +1,36 @@
+# Training of the power-level agent (control.method reinforcement_learning). Start with:  python train_rl.py
+# The training and validation periods are independent of simulation.start_time/end_time of the plant
+# configuration. Plant, scoring and RL options (model_path, ...) come from plant_config.
+plant_config: default.yaml # Path relative to this file
+
+training:
+  timesteps: 800000 # Number of control decisions
+  episode_days: 14 # Length of one training episode (random start inside the training period)
+  seed: 42
+  eval_every: 25000 # Decisions between validation runs
+  validation_windows: 8 # Number of evenly spread validation windows per run; null = the whole validation period
+  validation_window_days: 7 # Length of one validation window (only with validation_windows)
+  n_envs: 4 # Parallel environments (processes) for collecting decisions; > 1 needs several free CPU cores
+
+periods:
+  training:
+    start_time: "2020-08-01 00:00"
+    end_time: "2024-08-01 00:00"
+  validation: # The checkpoint with the best validation score becomes the model. null = same as training
+    start_time: "2024-08-01 00:00"
+    end_time: "2025-08-01 00:00"
+
+# DQN hyperparameters. All entries are optional; missing ones use DQN_DEFAULTS in learning/training.py.
+dqn:
+  net_arch: [64, 64] # Hidden layers (neurons per layer) of the Q-network
+  learning_rate: 0.00005 # Step size of the optimizer (Adam)
+  buffer_size: 100000 # Replay buffer: number of past decisions kept for learning
+  learning_starts: 1000 # Random decisions collected before learning starts (at most training.timesteps / 10)
+  batch_size: 64 # Decisions per gradient step
+  gamma: 0.995 # Discount per 10-minute decision (0.995 = horizon of roughly 200 decisions = 33 h)
+  train_freq: 2 # One learning phase every N decisions
+  gradient_steps: 1 # Gradient steps per learning phase
+  target_update_interval: 5000 # Decisions between copies of the Q-network into the target network
+  exploration_fraction: 0.2 # Share of training.timesteps during which random actions are reduced
+  exploration_initial_eps: 1.0 # Probability of a random action at the start
+  exploration_final_eps: 0.05 # Probability of a random action after exploration_fraction

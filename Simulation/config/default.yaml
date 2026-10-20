@@ -1,0 +1,132 @@
+# Plant and run configuration. Paths are relative to the project folder; times are UTC.
+weather:
+  source: meteoswiss # meteoswiss: download the full station archive automatically; csv: read simulation.weather_file
+  station: BAS # MeteoSwiss station code (BAS = Basel-Binningen)
+  cache_dir: weather_cache # Download cache, relative to the project folder
+  offline: false # true: use only files that were downloaded before
+  fill_gaps: true # Fill gaps in the 10-minute data from the daily profile of neighbouring days
+  max_gap_hours: 48 # Longer gaps stop a simulation with an error; RL training skips them
+
+simulation:
+  settling_hours: 48.0 # Extra run BEFORE start_time to settle building and storage; not counted in metrics or score. 0 disables
+  dt_minutes: 2 # Integration step of building, storage and heat pump
+  output_interval_minutes: 10 # Spacing of the rows in the result CSV; integer multiple of dt_minutes
+  start_time: "2025-08-01 00:00" # All times are UTC, as in the MeteoSwiss data
+  end_time: "2026-08-01 00:00" # Exclusive
+
+building:
+  heated_floor_area_m2: 300.0
+  mass_heat_capacity_Wh_per_m2K: 72.0 # Effective heat capacity of the building mass (72 Wh/(m2 K) = 260 kJ/(m2 K))
+  mean_room_height_m: 2.4 # Determines the heat capacity of the room air
+  direct_loss_fraction: 0.5 # Share of UA lost directly from the room air; the rest is lost via the building mass (steady-state loss is therefore slightly below UA)
+  T_mass_init_C: null # null: steady state between room and first outside temperature
+  T_room_init_C: 22.0
+  UA_W_per_K: 300 # Total heat-loss coefficient of the building
+  T_max_C: 30.0 # Upper limit of room air and building mass; heat above it is discarded and reported
+  T_set_C: 22.0 # Room target temperature during the day
+  comfort_buffer_K: 0.1 # Comfort threshold = current room target (night setback included) minus this value
+
+heat_pump:
+  performance_map_file: data/wpl25a_toolbox.csv # Manufacturer performance map (WPL 25 A), relative to the project folder
+  T_source_min_C: -20.0 # Lowest source temperature of the map; colder outside air uses the map values at this temperature
+  T_sink_max_C: 65.0 # Maximum heat-pump supply temperature
+  min_on_time_min: 10 # Minimum run time; WPM 3 "MINIMALE LAUFZEIT", adjustable 0..30 min (manual p. 41)
+  min_off_time_min: 10 # Minimum off time before a restart
+  max_volume_flow_L_h: 4000.0 # Maximum flow of the UP 25/7.5 PCV pump (4.00 m3/h); null = no limit
+  min_volume_flow_L_h: 1000.0 # Minimum flow while the compressor runs (1 m3/h); 0 disables the lower limit
+  supply_spread_K: 8.0 # Target spread between heat-pump supply and return; the flow limits can change the actual spread
+  minimum_supply_spread_K: 0.01 # The heat pump stops if the achievable spread falls to or below this value
+
+storage:
+  model: SBP 700 E # Stiebel Eltron SBP 200 E, SBP 400 E or SBP 700 E (data/sbp_e_models.yaml)
+  T_storage_init_C: 46.0 # Initial temperature of all layers
+  node_count: 10 # Layers, numbered from the top. Ports: heat pump in at 2, out at the bottom; heating circuit out at 1, back in at the second-lowest layer
+  control_sensor_layer: null # Layer of the control sensor (1 = top); null: second-lowest layer (9 of 10)
+  initial_node_temperatures_C: null # Optional list from top to bottom; overrides T_storage_init_C
+
+heating:
+  room_response_minutes: 30.0 # Time within which a room deviation from the target is to be corrected (sets the heat demand); must be positive
+  room_target_lookahead_minutes: 0.0 # The heating circuit uses the room target this many minutes ahead (0 = current target)
+  radiator: # Radiator map from the logarithmic mean excess temperature; water cp = 4182 J/(kg K)
+    reference_power_W: 6600.0 # Radiator output at the reference temperatures below
+    reference_supply_C: 48.0
+    reference_room_C: 22.0
+    exponent: 1.3 # Radiator exponent n (output ~ excess temperature^n)
+    max_power_W: 1000000.0 # Upper end of the map; a larger demand raises an error
+    power_step_W: 10.0 # Resolution of the map
+  volume_flow_L_h: 1870.0 # Constant flow in the radiator circuit; the mixing valve decides how much of it comes from the storage
+
+control:
+  interval_minutes: 10 # Time between control decisions; multiple of dt_minutes
+  method: heating_curve # heating_curve, heating_curve_supply, cop_optimized, pause_load_shifting, run_load_shifting, reinforcement_learning or reinforcement_learning_offset
+  pause_load_shifting: # Paired trials: keep the base control running one interval longer instead of switching off
+    base_method: heating_curve_supply # Base control: heating_curve_supply or heating_curve
+    room_tolerance_K: 0.01 # Trial and reference count as recovered when room air and building mass differ by at most this
+    storage_tolerance_K: 0.1 # Same for the storage (mean temperature or every layer, see recovery)
+    min_score_gain: 0.000000001 # A trial is accepted if it lowers the score by more than this (CHF)
+    level: best_cop # Power of the extra interval: best_cop (map level with the highest COP) or a fraction, e.g. 0.75
+    recovery: mean # mean: compare room, mass and mean storage temperature; full: also every storage layer
+  run_load_shifting: # Paired trials: raise the power of a running base control by one map level for one interval
+    base_method: heating_curve_supply # Base control: heating_curve_supply or heating_curve
+    minimum_cop_gain: 0.0 # Only levels whose COP exceeds the current level by more than this are tried
+    room_tolerance_K: 0.01 # Trial and reference count as recovered when room air and building mass differ by at most this
+    storage_tolerance_K: 0.1 # Same for the storage (mean temperature or every layer, see recovery)
+    recovery: mean # mean: compare room, mass and mean storage temperature; full: also every storage layer
+  reinforcement_learning: # Agent chooses the heat-pump power level directly
+    model_path: "results/rl/model.zip" # Relative to the project folder; created by: python train_rl.py
+  reinforcement_learning_offset: # Agent shifts the heating-circuit set-point; the heating curve sets the power
+    model_path: "results/rl_offset/model.zip" # Relative to the project folder; created by: python train_rl.py --config config/rl_training_offset.yaml
+    constant_shift_K: null # Number: comparison run without a model, the same shift at every decision (0 = heating_curve); null = use the model
+    shift_K: # Actions in K: -max ... +max in steps of step (or an explicit list)
+      max: 4.0
+      step: 1.0
+    observation: # Optional inputs of the agent in addition to the measured values
+      last_shift: true # Last shift chosen by the agent
+      heat_pump_power: true # Heat-pump state (-1 = off, otherwise power fraction)
+  cop_optimized: # Power from the current COP compared with a daily reference COP (daily mean outside temperature)
+    fallback: heating_curve_supply # Heating-curve control that sets the minimum power, so comfort is kept when the COP is poor
+    min_power_advantage: 0.0 # Relative COP advantage over the reference below which the COP control requests no power
+    full_power_advantage: 0.2 # Relative COP advantage at which the COP control requests full power; linear in between
+  night_setback:
+    enabled: true
+    start: "21:00" # UTC, like all times
+    end: "06:00"
+    room_offset_K: 3.0 # Reduction of the room target and of the comfort threshold
+    warmup_minutes_pro_K: 150 # Warm-up before the end: the room target rises again over room_offset_K * this (3 K * 150 = 450 min); the comfort threshold stays lowered until the end
+    warmup_rounding: 1.0 # Shape of the warm-up: 0 linear, 1 S-curve, values in between blend both
+  heating_curve: # Buffer target from the stationary radiator demand at the current outside temperature (method heating_curve)
+    offset_K: 7.0 # Parallel shift of the buffer target above the required radiator supply
+    slope_factor: 0.8 # Scales the weather-dependent rise around 20 °C outside; 1 = radiator curve unchanged
+    temperature_gain_W_per_K: 4000.0 # Requested heat = building loss + this * (buffer target - control sensor)
+    temperature_hysteresis_K: 5.0 # Stop test: a running heat pump only stops once the request for buffer target + this falls below its minimum output
+    hk_shift_gain: # Effect of a heating-circuit set-point shift ("WP HK") on the buffer target, measured on the WPM 3 (comfort 22 vs eco 19 °C); only used by reinforcement_learning_offset
+      outside_C: [-20.0, 0.0, 20.0]
+      K_per_K: [1.533, 1.667, 1.933] # Buffer-target shift per K of set-point shift: 4.6 / 5.0 / 5.8 K for 3 K; linear in between
+  heating_curve_supply: # Buffer target from the current heat demand of the building (method heating_curve_supply)
+    offset_K: 7.0 # Buffer target = required heating-circuit supply + this
+    slope_factor: 0.7 # Scales the required supply rise above the room target before the offset is added; 1 = unchanged
+    temperature_gain_W_per_K: 2000.0 # Requested heat = building loss + this * (buffer target - control sensor)
+    temperature_hysteresis_K: 5.0 # Stop test: a running heat pump only stops once the request for buffer target + this falls below its minimum output
+  schedule:
+    seasonal_heating_off:
+      enabled: true # Heat pump and building heating are off every year in this date range
+      start: "06-01" # Inclusive, MM-DD
+      end: "09-01" # Exclusive, MM-DD; heating stays off throughout June, July and August
+
+scoring:
+  # Example values for comparing strategies, not actual supplier tariffs or wear costs.
+  currency: CHF
+  cost_per_heat_pump_start: 0.1 # CHF per compressor start
+  cost_per_comfort_degree_hour: 5.0 # CHF per kelvin hour below the comfort threshold
+  electricity:
+    default_price_per_kWh: 0.3 # CHF per kWh of heat-pump electricity
+    tariff_windows_enabled: false # false: default_price_per_kWh all day
+    tariff_windows: # Time-of-use prices, only with tariff_windows_enabled
+      - start: "22:00"
+        end: "06:00"
+        price_per_kWh: 0.20
+
+analysis:
+  output_dir: "results/single_run" # Relative to the project folder
+  save_csv: true # Write time series and metrics as CSV
+  save_plots: true # Write the standard diagrams

@@ -1,0 +1,137 @@
+weather:
+  source: meteoswiss
+  station: BAS
+  cache_dir: weather_cache
+  offline: false
+  fill_gaps: true
+  max_gap_hours: 48
+simulation:
+  settling_hours: 48.0
+  dt_minutes: 2
+  output_interval_minutes: 10
+  start_time: 2025-08-01 00:00
+  end_time: 2026-08-01 00:00
+building:
+  heated_floor_area_m2: 300.0
+  mass_heat_capacity_Wh_per_m2K: 72.0
+  mean_room_height_m: 2.4
+  direct_loss_fraction: 0.5
+  T_mass_init_C: null
+  T_room_init_C: 22.0
+  UA_W_per_K: 300
+  T_max_C: 30.0
+  T_set_C: 22.0
+  comfort_buffer_K: 0.1
+heat_pump:
+  performance_map_file: data/wpl25a_toolbox.csv
+  T_source_min_C: -20.0
+  T_sink_max_C: 65.0
+  min_on_time_min: 10
+  min_off_time_min: 10
+  max_volume_flow_L_h: 4000.0
+  min_volume_flow_L_h: 1000.0
+  supply_spread_K: 8.0
+  minimum_supply_spread_K: 0.01
+storage:
+  model: SBP 700 E
+  T_storage_init_C: 46.0
+  node_count: 10
+  control_sensor_layer: null
+  initial_node_temperatures_C: null
+heating:
+  room_response_minutes: 30.0
+  room_target_lookahead_minutes: 0.0
+  radiator:
+    reference_power_W: 6600.0
+    reference_supply_C: 48.0
+    reference_room_C: 22.0
+    exponent: 1.3
+    max_power_W: 1000000.0
+    power_step_W: 10.0
+  volume_flow_L_h: 1870.0
+control:
+  interval_minutes: 10
+  method: reinforcement_learning_offset
+  pause_load_shifting:
+    base_method: heating_curve_supply
+    room_tolerance_K: 0.01
+    storage_tolerance_K: 0.1
+    min_score_gain: 1.0e-09
+    level: best_cop
+    recovery: mean
+  combined_load_shifting:
+    base_method: heating_curve_supply
+    run_trials: true
+    pause_trials: true
+    level: best_cop
+    recovery: mean
+    room_tolerance_K: 0.01
+    storage_tolerance_K: 0.1
+    minimum_cop_gain: 0.0
+  run_load_shifting:
+    base_method: heating_curve_supply
+    minimum_cop_gain: 0.0
+    room_tolerance_K: 0.01
+    storage_tolerance_K: 0.1
+    recovery: mean
+  reinforcement_learning:
+    model_path: results/rl/model.zip
+  reinforcement_learning_offset:
+    model_path: results/rl_offset/model.zip
+    constant_shift_K: null
+    shift_K:
+      max: 4.0
+      step: 1.0
+    observation:
+      last_shift: true
+      heat_pump_power: true
+  cop_optimized:
+    fallback: heating_curve_supply
+    min_power_advantage: 0.0
+    full_power_advantage: 0.2
+  night_setback:
+    enabled: true
+    start: '21:00'
+    end: 06:00
+    room_offset_K: 3.0
+    warmup_minutes_pro_K: 150
+    warmup_rounding: 1.0
+  heating_curve:
+    offset_K: 7.0
+    slope_factor: 0.8
+    temperature_gain_W_per_K: 4000.0
+    temperature_hysteresis_K: 5.0
+    hk_shift_gain:
+      outside_C:
+      - -20.0
+      - 0.0
+      - 20.0
+      K_per_K:
+      - 1.533
+      - 1.667
+      - 1.933
+  heating_curve_supply:
+    offset_K: 7.0
+    slope_factor: 0.7
+    temperature_gain_W_per_K: 2000.0
+    temperature_hysteresis_K: 5.0
+  schedule:
+    seasonal_heating_off:
+      enabled: true
+      start: 06-01
+      end: 09-01
+scoring:
+  currency: CHF
+  cost_per_heat_pump_start: 0.1
+  cost_per_comfort_degree_hour: 5.0
+  electricity:
+    default_price_per_kWh: 0.3
+    tariff_windows_enabled: false
+    tariff_windows:
+    - start: '22:00'
+      end: 06:00
+      price_per_kWh: 0.2
+analysis:
+  output_dir: results/single_run
+  save_csv: true
+  save_plots: true

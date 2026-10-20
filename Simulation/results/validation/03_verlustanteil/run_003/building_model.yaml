@@ -1,0 +1,35 @@
+parameters:
+  UA_W_per_K: 300
+  heated_floor_area_m2: 300.0
+  mass_heat_capacity_Wh_per_m2K: 72.0
+  mean_room_height_m: 2.4
+  direct_loss_fraction: 0.7
+  T_max_C: 30.0
+  C_air_Wh_per_K: 240.0
+  C_mass_Wh_per_K: 21600.0
+  H_am_W_per_K: 2969.054290718038
+  H_ae_W_per_K: 210.0
+  H_me_W_per_K: 90.00000000000001
+  stationary_UA_W_per_K: 297.35212283594393
+initial_temperatures_C:
+  air_C: 21.57666862168135
+  mass_C: 21.860817409625668
+settling_hours: 48.0
+initial_building_energy_Wh: 477372.05651711795
+initial_storage_energy_Wh: 31846.94043830832
+measurement_initial_state:
+  timestamp: '2025-09-01 00:00:00'
+  air_temperature_C: 21.57666862168135
+  mass_temperature_C: 21.860817409625668
+  storage_layer_temperatures_C:
+  - 41.37122623958533
+  - 41.24678066413252
+  - 40.343652417943105
+  - 39.40643305340731
+  - 38.56892583902584
+  - 37.867577971723684
+  - 37.224825511697986
+  - 36.303004953796965
+  - 34.31096532421984
+  - 34.11868882681464
+  storage_mean_temperature_C: 38.07620808023472
